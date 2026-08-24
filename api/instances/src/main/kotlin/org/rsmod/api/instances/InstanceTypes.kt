@@ -163,6 +163,7 @@ public data class InstanceSettings(
     val description: String = "",
     val timeLimitTicks: Int? = null,
     val spawnOnFirstJoin: Boolean = false,
+    val customDeathHandling: Boolean = false,
 ) {
     init {
         require((recommendedCombat?.first ?: 0) <= (recommendedCombat?.last ?: 0)) {
@@ -187,6 +188,7 @@ public data class InstanceSettings(
             description = description,
             timeLimitTicks = timeLimitTicks,
             spawnOnFirstJoin = spawnOnFirstJoin,
+            customDeathHandling = customDeathHandling,
         )
 }
 
@@ -206,6 +208,11 @@ public data class InstanceSpec(
     val description: String = "",
     val timeLimitTicks: Int? = null,
     val spawnOnFirstJoin: Boolean = false,
+    /**
+     * When true, [InstanceManager.handleDeath] keeps the dying player as an occupant instead of
+     * removing them from the session. Content (e.g. raids) then owns its own death flow.
+     */
+    val customDeathHandling: Boolean = false,
 )
 
 public sealed interface InstanceAccess {

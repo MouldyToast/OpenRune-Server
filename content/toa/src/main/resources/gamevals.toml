@@ -1,0 +1,11 @@
+# Tombs of Amascut — server-side gameval aliases (Session 1).
+# `-1` ids are auto-assigned by GameValAutoAssigner at buildCache (this file gets rewritten).
+# Jingles use the STOCK rev240 cache gamevals (jingle.toa_path_complete_jingle=1100,
+# jingle.toa_boss_complete_jingle=1099, jingle.game_lose=968) — custom aliases of existing
+# osrs ids are rejected by GameValProvider, and NR's raw ids (90/295/296) were from its own
+# cache revision anyway.
+
+[gamevals.queue]
+toa_raid_entry =65527
+toa_death =65525
+toa_room_wipe =65523

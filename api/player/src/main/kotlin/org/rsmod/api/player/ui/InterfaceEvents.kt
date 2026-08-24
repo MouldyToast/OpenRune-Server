@@ -47,6 +47,21 @@ public data class IfModalButton(
     override val id: Long = component.packed.toLong()
 }
 
+/**
+ * Published when a pause-button click (`IfEvent.PauseButton`) arrives while no script is
+ * suspended awaiting a `ResumePauseButtonInput`.
+ *
+ * Dialogue-style flows (mesbox pages, chat menus) suspend on the input and are resumed
+ * directly by the resume-pausebutton handler; pause-button-driven interfaces that stay open
+ * between clicks (e.g. the Tombs of Amascut party screens, whose client scripts route every
+ * button through a `cc_resume_pausebutton` layer) receive this event instead, keyed by the
+ * pause-button layer component. The interface is NOT closed when this event is published.
+ */
+public data class IfPauseButton(val component: ComponentType, val comsub: Int) :
+    SuspendEvent<ProtectedAccess> {
+    override val id: Long = component.packed.toLong()
+}
+
 
 public data class IfOverlayScriptTrigger(
     val component: ComponentType,

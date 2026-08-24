@@ -148,6 +148,24 @@ object InstanceSettingsTable {
             columnRSCM(EXIT_OBJECT, "loc.godwars_dungeon_zamorak_altar01")
         }
 
+        row("dbrow.instance_toa") {
+            column(KEY, "toa")
+            columnCoord(EXIT_COORD, CoordGrid(3358, 9113))
+            columnCoord(ENTER_COORD, CoordGrid(3551, 5161))
+            column(FEE, 0)
+            column(MAX_PLAYERS, 8)
+            column(TIME_LIMIT_MINUTES, 0)
+            column(GRACE_MINUTES, 10)
+            // boss_npc intentionally omitted (Session 1): decodes as an empty list.
+            column(BOSS_NAME, "Tombs of Amascut")
+            column(RECOMMENDED_COMBAT, 90, 126)
+            column(TEAM_SIZE, 8)
+            column(LOOT_MULTIPLIER, "x1.0")
+            column(DESCRIPTION, "Raid the tomb of the Kharidian pantheon.")
+            columnRSCM(ENTER_OBJECT, "loc.toa_lobby_raid_entry")
+            columnRSCM(EXIT_OBJECT, "loc.toa_lobby_exit")
+        }
+
         row("dbrow.instance_cowboss") {
             column(KEY, "cowboss")
             columnCoord(EXIT_COORD, CoordGrid(3258, 3289, 0))

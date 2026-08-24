@@ -16,7 +16,6 @@ import org.rsmod.api.instances.events.InstanceStartedEvent
 import org.rsmod.api.instances.events.InstanceTimeTickEvent
 import org.rsmod.api.instances.region.InstanceAreaResolver
 import org.rsmod.api.instances.region.InstancePlacement
-import org.rsmod.api.instances.region.OsrsInstancing
 import org.rsmod.api.instances.region.enterCoord
 import org.rsmod.api.instances.region.localCoord
 import org.rsmod.api.instances.timer.InstanceKillTimer
@@ -218,6 +217,8 @@ constructor(
     public fun sessionForRegion(regionId: Int): InstanceSession? =
         regionToInstance[regionId]?.let(sessions::get)
 
+    public fun regionForId(id: InstanceId): Region? = regions[id]
+
     public fun contributionsFor(id: InstanceId): DamageContributions? =
         sessionForId(id)?.damageContributions
 
@@ -368,6 +369,10 @@ constructor(
 
     public fun handleDeath(player: Player, currentTick: Int) {
         val session = sessionForPlayer(player) ?: return
+        if (session.spec.customDeathHandling) {
+            // Content (e.g. raids) owns its own death flow; keep the player as an occupant.
+            return
+        }
         removeOccupant(player, session, currentTick)
     }
 
@@ -399,11 +404,10 @@ constructor(
     private fun reconcileOccupants(currentTick: Int) {
         for (session in sessions.values.toList()) {
             val region = regions[session.id] ?: continue
-            val center = session.enterCoord(region)
             val leavers =
                 session.occupants.filter { occupant ->
                     val player = playerList.firstOrNull { it.uuid == occupant }
-                    player == null || player.coords.chebyshevDistance(center) > REGION_RADIUS
+                    player == null || !region.containsCoords(player.coords)
                 }
             for (occupant in leavers) {
                 val player = playerList.firstOrNull { it.uuid == occupant } ?: continue
@@ -411,6 +415,14 @@ constructor(
             }
         }
     }
+
+    /** Bounds containment: `[southWest, northEast)` on x/z; a region spans all 4 levels. */
+    private fun Region.containsCoords(coords: CoordGrid): Boolean =
+        coords.x >= southWest.x &&
+            coords.x < northEast.x &&
+            coords.z >= southWest.z &&
+            coords.z < northEast.z &&
+            coords.level in 0 until REGION_LEVEL_COUNT
 
     private fun tickTimed(currentTick: Int) {
         for (session in sessions.values.toList()) {
@@ -766,7 +778,7 @@ constructor(
             player.username.equals(name, ignoreCase = true)
 
     private companion object {
-        private const val REGION_RADIUS = OsrsInstancing.PADDING_BETWEEN_INSTANCES
+        private const val REGION_LEVEL_COUNT = 4
         private const val SERVER_OWNER_ID: Long = 0L
     }
 }
