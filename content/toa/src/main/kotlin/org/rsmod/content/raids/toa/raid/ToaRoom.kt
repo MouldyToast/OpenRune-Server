@@ -227,7 +227,7 @@ internal enum class ToaRoom(
         copyLevel = 1,
         regionZoneX = 16,
         regionZoneZ = 16,
-        playerSpawn = CoordGrid(31, 48),
+        playerSpawn = CoordGrid(32, 45),
         spawnRandomX = 2,
         spawnRandomZ = 0,
         soundTrack = "Amascut's Promise",
