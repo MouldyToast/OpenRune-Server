@@ -75,11 +75,32 @@ constructor(
                         "done=${raid.pathsCompleted.map { it.properName }}"
                 )
             }
+            "jump" -> {
+                val name = cheat.args.getOrNull(1)?.uppercase()
+                val room = ToaRoom.entries.firstOrNull { it.name == name }
+                if (room == null) {
+                    player.mes("Unknown room. Options: ${ToaRoom.entries.joinToString { it.name }}")
+                    return
+                }
+                // Mark all 4 paths completed so door/wardens state is consistent.
+                for (path in ToaPath.entries) {
+                    if (path !in raid.pathsCompleted) {
+                        raid.pathsCompleted += path
+                    }
+                }
+                raid.currentRoom = room
+                raid.stage = ToaRoomStage.NOT_STARTED
+                raid.currentPath = room.path
+                protectedAccess.launch(player) {
+                    with(controller) { transitionTo(raid, room) }
+                }
+                player.mes("ToA debug: jumped to $room.")
+            }
             else -> player.mes(USAGE)
         }
     }
 
     private companion object {
-        const val USAGE: String = "Use as ::toaroom [start|complete|advance|goto|info]"
+        const val USAGE: String = "Use as ::toaroom [start|complete|advance|goto|jump <room>|info]"
     }
 }
