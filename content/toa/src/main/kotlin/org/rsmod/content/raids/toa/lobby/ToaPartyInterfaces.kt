@@ -110,9 +110,14 @@ constructor(
     // Lobby overlay (interface 773 toa_lobby) — NR TOALobbyArea.enter / sendEmptyPartyList.
     // ------------------------------------------------------------------------------------
 
-    /** NR `TOALobbyArea.enter`: open the overlay and reset it (party text follows on edits). */
+    /**
+     * NR `TOALobbyArea.enter`: open the overlay and reset it (party text follows on edits).
+     * Opened at the passive `overlay_hud` toplevel slot — NOT the default floater slot, which
+     * the stock client treats as a modal floating screen and captures keyboard/click input
+     * while occupied (bank/typing dead the moment a player walked into the lobby).
+     */
     fun onLobbyEnter(player: Player) {
-        player.ifOpenOverlay(IF_LOBBY_OVERLAY, eventBus)
+        player.ifOpenOverlay(IF_LOBBY_OVERLAY, ToaConstants.COM_OVERLAY_TARGET, eventBus)
         sendEmptyPartyOverlay(player)
     }
 
@@ -125,7 +130,7 @@ constructor(
         if (player.ui.containsOverlay(IF_LOBBY_OVERLAY)) {
             return
         }
-        player.ifOpenOverlay(IF_LOBBY_OVERLAY, eventBus)
+        player.ifOpenOverlay(IF_LOBBY_OVERLAY, ToaConstants.COM_OVERLAY_TARGET, eventBus)
         val party = registry.currentParty(player)
         if (party == null) {
             sendEmptyPartyOverlay(player)

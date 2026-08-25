@@ -27,6 +27,7 @@ import org.rsmod.content.raids.toa.hud.ToaHud
 import org.rsmod.content.raids.toa.invocation.ToaInvocation
 import org.rsmod.content.raids.toa.invocation.overtimeRaidLevelPenalty
 import org.rsmod.content.raids.toa.lobby.ToaPartyInterfaces
+import org.rsmod.content.raids.toa.mainhall.ToaMainHall
 import org.rsmod.content.raids.toa.party.ToaParty
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Player
@@ -64,6 +65,7 @@ constructor(
     private val objRepo: ObjRepository,
     private val potionEffects: ToaPotionEffect,
     private val partyInterfaces: ToaPartyInterfaces,
+    private val mainHall: ToaMainHall,
 ) {
     /* ------------------------------------------------------------------------------------ */
     /* Raid creation + entry                                                                */
@@ -121,6 +123,10 @@ constructor(
         }
         val raid = ToaRaid(session.id, session, region, party.settings, identities, leaderUuid)
         registry.register(raid)
+        // NR built the MainHallEncounter on demand for the party's first `enter`; the raid
+        // starts with the main hall as its current room, so the visit starts here (initial
+        // Path-level invocation increases, door states).
+        mainHall.onVisitStart(raid)
 
         // The leader was bound by create() (not yet an occupant); members must join first.
         val entered = mutableSetOf(leaderUuid)
@@ -177,6 +183,18 @@ constructor(
         val raid = registry.forInstance(InstanceId(args.instanceId)) ?: return
         val uuid = player.uuid ?: return
         val state = raid.playerState(uuid) ?: return
+        // A queued entry can outlive its membership by a cycle (evicted as a straggler, or
+        // the raid failed/finished, between the queue write and this launch): playerStates
+        // keeps entries for leavers, so membership must be checked against the LIVE list or
+        // the pending entry would teleport a non-member back into the instance.
+        if (raid.memberByUuid(uuid) == null || raid.tombsFailure || raid.isFinished) {
+            // A rejoin binding taken by tryRejoin must not linger without finalizeEntry —
+            // release it so a stale binding can never block the player's next instance entry.
+            if (manager.sessionForPlayer(player) === raid.session) {
+                manager.leave(player, raid.session, worldClock.cycle)
+            }
+            return
+        }
         val logout = if (args.rejoin) state.logoutState else null
         val room = logout?.room ?: ToaRoom.MAIN_HALL
         // NR-PARITY: a rejoiner ALWAYS restores at the logout room's randomized spawn tile
@@ -221,6 +239,10 @@ constructor(
         ToaHud.open(player)
         ToaHud.refreshParty(raid)
         refreshTimer(player, raid)
+        if (room == ToaRoom.MAIN_HALL) {
+            // NR MainHallEncounter.enter(): rumbling messages + supply-arrival grant.
+            mainHall.onPlayerArrive(this, raid)
+        }
         if (args.rejoin) {
             checkRoomReset(raid)
         }
@@ -233,16 +255,26 @@ constructor(
     /**
      * Moves the calling player to [room] (fade + telejump), switching the party's current room
      * first when this player is the first one through (NR `TOAManager.enter`). The raid timer
-     * starts on the first non-main-hall room entry.
+     * starts on the first non-main-hall room entry. Returns `true` when the player was moved
+     * (NR `enter`'s boolean — callers gate HUD path-varbit updates on it).
+     *
+     * [movePartyRoom] = false teleports the CALLER only, never re-assigning the party's
+     * current room — the main hall uses it to let a straggler follow into a path's first room
+     * after the party has already advanced deeper (NR-BUG-FIX: NR's `enter(true, ...)` there
+     * either leader-gated the straggler or dragged the whole party's room state backwards).
      */
-    suspend fun ProtectedAccess.transitionTo(raid: ToaRaid, room: ToaRoom) {
-        val uuid = player.uuid ?: return
-        val state = raid.playerState(uuid) ?: return
+    suspend fun ProtectedAccess.transitionTo(
+        raid: ToaRaid,
+        room: ToaRoom,
+        movePartyRoom: Boolean = true,
+    ): Boolean {
+        val uuid = player.uuid ?: return false
+        val state = raid.playerState(uuid) ?: return false
         if (state.isGhost) {
             mes("A mysterious force prevents you from doing that.")
-            return
+            return false
         }
-        if (raid.currentRoom != room) {
+        if (movePartyRoom && raid.currentRoom != room) {
             moveParty(raid, room)
         }
         startTimerIfNeeded(raid, room)
@@ -251,10 +283,16 @@ constructor(
             room == ToaRoom.MAIN_HALL && raid.currentPath != null && raid.pathsCompleted.isNotEmpty()
         val dest =
             if (returningMidPath) {
-                mainHallPathSpawn(raid, raid.currentPath ?: return)
+                mainHallPathSpawn(raid, raid.currentPath ?: return false)
             } else {
                 roomSpawn(raid, room)
             }
+        // Assigned BEFORE the suspending fade — NR parity (`TOAManager.enter` ran
+        // `setCurrentEncounter` synchronously at click time, ahead of its scheduled fade
+        // tasks): the straggler/abandon checks and `clearStaleSelection`'s path-occupancy
+        // test must see the entrant during the fade window, or a member's door click could
+        // void a selection whose leader is still mid-transition.
+        state.currentRoom = room
         withInstanceEnterTransition(InstanceEnterTransition()) { telejump(dest) }
         if (returningMidPath) {
             raid.currentPath?.let { faceDirection(it.faceDirection) }
@@ -262,18 +300,13 @@ constructor(
         if (room == ToaRoom.MAIN_HALL) {
             vars[ToaConstants.VARBIT_CURRENT_PATH] = 0
         }
-        state.currentRoom = room
         refreshTimer(player, raid)
         ToaHud.refreshParty(raid)
-    }
-
-    /**
-     * Selects a main-hall path (Session 2 wires the selection UI/loc; the state transition
-     * must already exist per the design brief). Sets [ToaRaid.currentPath] so [advanceRaid]
-     * routes out of the main hall.
-     */
-    fun selectPath(raid: ToaRaid, path: ToaPath) {
-        raid.currentPath = path
+        if (room == ToaRoom.MAIN_HALL) {
+            // NR MainHallEncounter.enter(): rumbling messages + supply-arrival grant.
+            mainHall.onPlayerArrive(this, raid)
+        }
+        return true
     }
 
     /**
@@ -312,6 +345,13 @@ constructor(
             if (!raid.isOriginalMember(uuid) && registry.forPlayer(uuid) === raid) {
                 registry.detachPlayer(uuid)
             }
+        }
+        if (room == ToaRoom.MAIN_HALL) {
+            // NR reconstructed the MainHallEncounter per visit; the visit reset (Walk the
+            // Path rolls, supply spirit, door states) runs when the party moves back. After
+            // the roster snapshot — supply eligibility reads the fresh roster (NR re-ran
+            // `updateOriginalPlayers` in the old room's teardown before `constructed()`).
+            mainHall.onVisitStart(raid)
         }
     }
 
@@ -698,9 +738,17 @@ constructor(
      * Removes [player] from the raid (NR `leaveTombs` + `TOARaidParty.leave`): a [voluntary]
      * leave forfeits the rejoin ticket; the player is faded out to the lobby-side outside
      * spawn. The session self-destructs when the last occupant leaves (`destroyWhenEmpty`).
+     * [exitMessage] overrides the default farewell (the main hall's straggler eviction sends
+     * NR's "Your party moved on without you." through here).
      */
     @OptIn(InternalApi::class)
-    fun leaveRaid(player: Player, raid: ToaRaid, voluntary: Boolean) {
+    fun leaveRaid(
+        player: Player,
+        raid: ToaRaid,
+        voluntary: Boolean,
+        exitMessage: String? =
+            if (voluntary) "You abandon the raid and leave the Tombs of Amascut." else null,
+    ) {
         val uuid = player.uuid ?: return
         val previousLeader = raid.leaderUuid
         raid.playerState(uuid)?.let { state ->
@@ -712,12 +760,7 @@ constructor(
             registry.detachPlayer(uuid)
         }
         notifyPromotion(raid, previousLeader)
-        launchExit(
-            raid = raid,
-            player = player,
-            message = if (voluntary) "You abandon the raid and leave the Tombs of Amascut." else null,
-            playJingle = false,
-        )
+        launchExit(raid = raid, player = player, message = exitMessage, playJingle = false)
         ToaHud.refreshParty(raid)
         checkRoomReset(raid)
     }

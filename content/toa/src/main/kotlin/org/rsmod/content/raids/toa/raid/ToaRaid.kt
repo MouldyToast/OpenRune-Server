@@ -6,6 +6,8 @@ import org.rsmod.content.raids.toa.invocation.ToaPartySettings
 import org.rsmod.content.raids.toa.invocation.ToaRaidMode
 import org.rsmod.content.raids.toa.invocation.permittedTeamDeaths
 import org.rsmod.content.raids.toa.invocation.timeLimitMinutes
+import org.rsmod.content.raids.toa.mainhall.ToaSupplyBundle
+import org.rsmod.game.entity.Npc
 import org.rsmod.game.region.Region
 import org.rsmod.map.CoordGrid
 
@@ -93,6 +95,40 @@ internal class ToaRaid(
      * varbit DECLARATION order differs, see `ToaConstants.VARBIT_PATH_LEVELS`).
      */
     val pathLevels: IntArray = IntArray(ToaPath.entries.size)
+
+    // ------------------------------------------------------------------------------------
+    // Main-hall visit state (Session 2). NR kept these on the per-visit `MainHallEncounter`
+    // room instance; this port's main hall is persistent, so they live here and are reset by
+    // `ToaMainHall.onVisitStart` every time the party (re-)enters the main hall.
+    // ------------------------------------------------------------------------------------
+
+    /**
+     * The path selected THIS main-hall visit, or null before selection (NR
+     * `MainHallEncounter.startedPath`). Distinct from [currentPath]: [startedPath] resets on
+     * every main-hall visit and drives the entrance-door locking, while [currentPath] persists
+     * as "the last path walked" for mid-raid main-hall re-entry spawns.
+     */
+    var startedPath: ToaPath? = null
+
+    /**
+     * Path-level increases granted THIS main-hall visit, indexed by [ToaPath] ordinal (NR
+     * `MainHallEncounter.bossLevelIncreases`) — already applied to [pathLevels]; kept so each
+     * arriving member hears the "mysterious rumbling" per raised path.
+     */
+    val visitPathIncreases: IntArray = IntArray(ToaPath.entries.size)
+
+    /** The helpful-spirit npc spawned this visit, or null (NR `supplyNpc`). */
+    var supplyNpc: Npc? = null
+
+    /**
+     * Members still owed the supply-arrival grant this visit (NR
+     * `eligibleSupplyPlayerUsernames`) — consumed on main-hall arrival, flipping the member's
+     * [ToaPlayerState.canClaimSupplies].
+     */
+    val supplyEligible: MutableSet<Long> = mutableSetOf()
+
+    /** The three claimable supply bundles while the spirit is up (NR `supplyContainers`). */
+    var supplyBundles: List<ToaSupplyBundle>? = null
 
     /** Team wipe count (NR `teamDeaths`). */
     var teamDeaths: Int = 0
@@ -260,6 +296,12 @@ internal class ToaPlayerState(val member: ToaRaidMember) {
 
     /** Snapshot taken on logout inside the raid; null once consumed or when not applicable. */
     var logoutState: ToaLogoutState? = null
+
+    /**
+     * `true` while entitled to claim a supply bundle from the helpful spirit (NR
+     * `TOAManager.canClaimSupplies`; raid-lifetime here where NR persisted it on the player).
+     */
+    var canClaimSupplies: Boolean = false
 }
 
 /**

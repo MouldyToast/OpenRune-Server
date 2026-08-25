@@ -54,10 +54,15 @@ internal object ToaHud {
         this.playerList = playerList
     }
 
-    /** Opens the HUD overlay for [player] (NR `sendHud`: interface 481 at OVERLAY). */
+    /**
+     * Opens the HUD overlay for [player] (NR `sendHud`: interface 481 at OVERLAY). Opened at
+     * the passive `overlay_hud` toplevel slot — NOT the default floater slot, which the stock
+     * client treats as a modal floating screen and captures keyboard/click input while
+     * occupied (see [ToaConstants.COM_OVERLAY_TARGET]).
+     */
     fun open(player: Player) {
         val bus = eventBus ?: return
-        player.ifOpenOverlay(ToaConstants.IF_HUD, bus)
+        player.ifOpenOverlay(ToaConstants.IF_HUD, ToaConstants.COM_OVERLAY_TARGET, bus)
     }
 
     /** Closes the HUD overlay for [player] (NR area-`leave` overlay close). */

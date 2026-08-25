@@ -4,7 +4,6 @@ import org.rsmod.api.repo.region.RegionStaticTemplate
 import org.rsmod.api.repo.region.RegionTemplate
 import org.rsmod.game.region.Region
 import org.rsmod.map.CoordGrid
-import org.rsmod.map.zone.ZoneKey
 
 /**
  * Builds the single large-region template holding ALL twelve Tombs of Amascut rooms, and
@@ -16,22 +15,21 @@ import org.rsmod.map.zone.ZoneKey
  * port packs every room into ONE 40x40-zone large region so room transitions are plain
  * in-region telejumps (see DESIGN.md architecture).
  *
- * Region layout (each cell is one 8x8-zone room; offsets are region zone x/z):
+ * Region layout (each cell is one 8x8-zone room; offsets are region zone x/z, all 4 source
+ * planes copied via `copyAllLevels`):
  * ```
- * level 0:                                  level 1:
- *   z=16 | SCABARAS_P  KEPHRI    APMEKEN_P    z=16 | WARDENS_1  WARDENS_2  REWARD
- *   z=0  | MAIN_HALL   CRONDIS_P ZEBAK        z=0  | BABA       HET_P      AKKHA
- *        +---------------------------------        +--------------------------------
- *          x=0         x=16      x=32               x=0        x=16       x=32
+ *   z=16 | AKKHA       WARDENS_1  WARDENS_2  REWARD
+ *   z=8  | KEPHRI      APMEKEN_P  BABA       HET_P
+ *   z=0  | MAIN_HALL   CRONDIS_P  ZEBAK      SCABARAS_P
+ *        +------------------------------------------------
+ *          x=0          x=8        x=16       x=24
  * ```
  *
- * The template is assembled with the single-zone `set` operator rather than the `copy {}`
- * block: `copy {}` always places a block at the region level equal to its `copyLevel`, while
- * the indexed form (`this[regionZoneX, regionZoneZ, regionLevel] = ZoneKey(nx, nz, nLevel)`)
- * targets the region level independently — required to put plane-0 source rooms (Ba-Ba, Het
- * puzzle, reward room) on region level 1 per the layout above. Only the room's gameplay plane
- * ([ToaRoom.copyLevel]) is copied; no two rooms copy the same source zones, so no
- * `uniqueFlag` disambiguation is needed.
+ * Each room occupies a unique (x,z) grid position so `copyAllLevels` can copy all 4 source
+ * planes without collision. NR's `DynamicArea.constructRegion` copies all planes; the original
+ * level-stacked layout forced single-plane copies because rooms shared (x,z) positions across
+ * region levels. No two rooms copy the same source zones, so no `uniqueFlag` disambiguation
+ * is needed.
  */
 internal object ToaLayout {
 
@@ -48,11 +46,11 @@ internal object ToaLayout {
     fun template(): RegionStaticTemplate = TEMPLATE
 
     private fun RegionStaticTemplate.place(room: ToaRoom) {
-        for (zoneX in 0 until ToaRoom.ROOM_ZONE_SPAN) {
-            for (zoneZ in 0 until ToaRoom.ROOM_ZONE_SPAN) {
-                this[room.regionZoneX + zoneX, room.regionZoneZ + zoneZ, room.regionLevel] =
-                    ZoneKey(room.copyZoneX + zoneX, room.copyZoneZ + zoneZ, room.copyLevel)
-            }
+        copyAllLevels(room.copyZoneX, room.copyZoneZ) {
+            zoneWidth = ToaRoom.ROOM_ZONE_SPAN
+            zoneLength = ToaRoom.ROOM_ZONE_SPAN
+            regionZoneX = room.regionZoneX
+            regionZoneZ = room.regionZoneZ
         }
     }
 

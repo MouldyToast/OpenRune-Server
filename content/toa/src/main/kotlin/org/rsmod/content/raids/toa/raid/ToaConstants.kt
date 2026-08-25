@@ -74,6 +74,61 @@ internal object ToaConstants {
     const val LOC_RAID_ENTRY: String = "loc.toa_lobby_raid_entry"
 
     // ------------------------------------------------------------------------------------
+    // Main-hall (nexus) locs — Session 2. NR `MainHallEncounter.replaceEntrance` worked on
+    // raw id deltas (base, +1 locked, +2 completed; wardens base sealed, +1 open); the
+    // stock-cache variants are named, so each state is referenced explicitly.
+    // ------------------------------------------------------------------------------------
+
+    /**
+     * Path-entrance door, selectable state — 46155/46158/46161/46164
+     * (`toa_nexus_<path>_door`), ops "Enter"/"Quick-Enter".
+     */
+    fun pathDoorOpen(path: ToaPath): String =
+        when (path) {
+            ToaPath.APMEKEN -> "loc.toa_nexus_apmeken_door"
+            ToaPath.SCABARAS -> "loc.toa_nexus_scabaras_door"
+            ToaPath.HET -> "loc.toa_nexus_het_door"
+            ToaPath.CRONDIS -> "loc.toa_nexus_crondis_door"
+        }
+
+    /**
+     * Path-entrance door, another-path-selected state (NR base+1) —
+     * 46156/46159/46162/46165 (`toa_nexus_<path>_door_unselected`); still op-bearing, the
+     * click answers "a different path has already been selected".
+     */
+    fun pathDoorUnselected(path: ToaPath): String =
+        when (path) {
+            ToaPath.APMEKEN -> "loc.toa_nexus_apmeken_door_unselected"
+            ToaPath.SCABARAS -> "loc.toa_nexus_scabaras_door_unselected"
+            ToaPath.HET -> "loc.toa_nexus_het_door_unselected"
+            ToaPath.CRONDIS -> "loc.toa_nexus_crondis_door_unselected"
+        }
+
+    /**
+     * Path-entrance door, path-completed state (NR base+2) — 46157/46160/46163/46166
+     * (`toa_nexus_<path>_door_closed`), no ops.
+     */
+    fun pathDoorClosed(path: ToaPath): String =
+        when (path) {
+            ToaPath.APMEKEN -> "loc.toa_nexus_apmeken_door_closed"
+            ToaPath.SCABARAS -> "loc.toa_nexus_scabaras_door_closed"
+            ToaPath.HET -> "loc.toa_nexus_het_door_closed"
+            ToaPath.CRONDIS -> "loc.toa_nexus_crondis_door_closed"
+        }
+
+    /** 46167 — the sealed Wardens lower-level entry (no ops until all 4 paths complete). */
+    const val LOC_WARDENS_DOOR: String = "loc.toa_nexus_wardens_door"
+
+    /** 46168 — the opened Wardens entry (NR base+1), ops "Enter"/"Quick-Enter". */
+    const val LOC_WARDENS_DOOR_OPEN: String = "loc.toa_nexus_wardens_door_open"
+
+    /** Wardens door origin tile offset in the main hall (NR (3548,5134)). */
+    val WARDENS_DOOR_OFFSET: CoordGrid = CoordGrid(28, 14)
+
+    /** Helpful-spirit spawn tile offset in the main hall (NR (3548,5154)). */
+    val SUPPLY_NPC_OFFSET: CoordGrid = CoordGrid(28, 34)
+
+    // ------------------------------------------------------------------------------------
     // Npcs (osrs-dumps npc.sym ids in comments).
     // ------------------------------------------------------------------------------------
 
@@ -83,12 +138,25 @@ internal object ToaConstants {
     /** 11695 — dead-player ghost transmog (NR `GHOST_PLAYER_NPC_ID`). */
     const val NPC_PLAYER_GHOST: String = "npc.toa_player_ghost"
 
+    /** 11694 — "Helpful Spirit" mid-raid supply npc, op "Claim" (NR `HELPFUL_SPIRIT_ID`). */
+    const val NPC_HELPFUL_SPIRIT: String = "npc.toa_midraidloot_trader"
+
     // ------------------------------------------------------------------------------------
     // Interfaces / varbits / varps (osrs-dumps ids in comments).
     // ------------------------------------------------------------------------------------
 
     /** 481 — raid HUD overlay (NR `sendHud`). */
     const val IF_HUD: String = "interface.toa_hud"
+
+    /**
+     * Toplevel slot for the ToA overlays (raid HUD 481, lobby party overlay 773). MUST be the
+     * passive HUD slot (the one the Godwars killcount overlay uses) — the default
+     * `ifOpenOverlay` target is the FLOATER slot, which the stock client treats as a modal
+     * floating screen (All Settings/collection log): keyboard input is captured and gameplay
+     * clicks are intercepted while anything sits in it, wedging the client with an invisible
+     * overlay open.
+     */
+    const val COM_OVERLAY_TARGET: String = "component.toplevel_osrs_stretch:overlay_hud"
 
     /** 14345 — lobby party status: 0 none, 1 in party, 2 leader entered ("step inside"). */
     const val VARBIT_PARTY_STATUS: String = "varbit.toa_client_partystatus"
@@ -139,6 +207,12 @@ internal object ToaConstants {
 
     /** 14381 — HUD current-path indicator; 0 in the main hall (NR `HUD_PATH_VARBIT`). */
     const val VARBIT_CURRENT_PATH: String = "varbit.toa_client_current_path"
+
+    /**
+     * [VARBIT_CURRENT_PATH] value for the Wardens lower level (NR sent `5` in
+     * `handleWardensEnter`; paths send `ToaPath.ordinal + 1` = 1..4).
+     */
+    const val HUD_PATH_WARDENS: Int = 5
 
     /**
      * 3606 — personal points transmit varp. Replaces NR's custom varbit 3586 (which is
