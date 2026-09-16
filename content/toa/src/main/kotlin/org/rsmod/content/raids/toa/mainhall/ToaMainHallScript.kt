@@ -5,6 +5,7 @@ import org.rsmod.api.invtx.invAddOrDrop
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.repo.obj.ObjRepository
+import org.rsmod.api.script.onIfModalButton
 import org.rsmod.api.script.onOpLoc1
 import org.rsmod.api.script.onOpLoc2
 import org.rsmod.api.script.onOpNpc1
@@ -17,6 +18,7 @@ import org.rsmod.content.raids.toa.raid.ToaRaidRegistry
 import org.rsmod.content.raids.toa.raid.ToaRoom
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
+import org.rsmod.game.inv.InvObj
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -32,10 +34,11 @@ import org.rsmod.plugin.scripts.ScriptContext
  * the "unselected" door variants (the latter answer with NR's different-path message), no ops
  * on completed/sealed doors.
  *
- * The helpful spirit's claim dialogue was also absent from the NR sources (`SackAction` et al
- * cover the supply BAG only): the claim here follows the live game — op "Claim", each
- * eligible member picks ONE of the three named bundles (Life / Chaos / Power), granted
- * straight to the inventory (add-or-drop).
+ * The helpful spirit's "Claim" op is ported from NR `HelpfulSpiritAction.java` +
+ * `TOASupplySelectInterface.java` (`com.zenyte.game.content.tombsofamascut.npc` /
+ * `.raid`): NR opened interface 777 (`toa_midraid_loot`) showing three item bundles in
+ * inv containers 807/808/809, with buttons to select one. The port opens the same interface
+ * and populates the same containers; the bundle math is in [ToaSupplies].
  */
 internal class ToaMainHallScript
 @Inject
@@ -61,6 +64,10 @@ constructor(
         onOpLoc2(ToaConstants.LOC_WARDENS_DOOR_OPEN) { wardensEnter(quick = true) }
         // 11694 toa_midraidloot_trader "Helpful Spirit", op1 "Claim".
         onOpNpc1(ToaConstants.NPC_HELPFUL_SPIRIT) { claimSupplies() }
+        // Interface 777 (toa_midraid_loot) button handlers — Life / Chaos / Power.
+        onIfModalButton(COM_SELECT_LIFE) { selectBundle(0) }
+        onIfModalButton(COM_SELECT_CHAOS) { selectBundle(1) }
+        onIfModalButton(COM_SELECT_POWER) { selectBundle(2) }
     }
 
     /* ------------------------------------------------------------------------------------ */
@@ -196,10 +203,8 @@ constructor(
     /* ------------------------------------------------------------------------------------ */
 
     /**
-     * The spirit's "Claim" op. NR's claim flow was not in the provided sources — this follows
-     * the live game: one bundle per eligible member, chosen from the three (see the class
-     * KDoc). Eligibility re-checks after the menu suspension so a double-click cannot claim
-     * twice.
+     * NR `HelpfulSpiritAction.handle()`: checks eligibility, then opens the supply selection
+     * interface (777 `toa_midraid_loot`) with the three bundles in inv containers 807–809.
      */
     private suspend fun ProtectedAccess.claimSupplies() {
         arriveDelay()
@@ -208,20 +213,34 @@ constructor(
         val state = raid.playerState(uuid) ?: return
         val bundles = raid.supplyBundles
         if (raid.supplyNpc == null || bundles == null || !state.canClaimSupplies) {
-            mesbox("The spirit has no supplies for you.")
+            // NR HelpfulSpiritAction: "The spirit gives you a strange look..."
+            mes("The spirit gives you a strange look. You've clearly claimed all you can for now.")
             return
         }
-        val choice =
-            choice3(
-                "${bundles[0].name}.",
-                0,
-                "${bundles[1].name}.",
-                1,
-                "${bundles[2].name}.",
-                2,
-                title = "Claim which supplies?",
-            )
-        val bundle = bundles.getOrNull(choice) ?: return
+        // Populate inv containers 807/808/809 with the bundle items and transmit.
+        val invNames = arrayOf(INV_BUNDLE_LIFE, INV_BUNDLE_CHAOS, INV_BUNDLE_POWER)
+        for ((i, bundle) in bundles.withIndex()) {
+            val container = inv(invNames[i])
+            invClear(container)
+            for (item in bundle.items) {
+                invAdd(container, item.obj, count = item.count)
+            }
+            invTransmit(container)
+        }
+        ifOpenMainModal(IF_SUPPLY_SELECT)
+    }
+
+    /**
+     * NR `TOASupplySelectInterface.addContainer(player, index)`: grants the chosen bundle's
+     * items into a supply bag (or directly if the bag system isn't wired yet), marks the
+     * player as having claimed, and closes the interface.
+     */
+    private fun ProtectedAccess.selectBundle(index: Int) {
+        val uuid = player.uuid ?: return
+        val raid = registry.forPlayer(uuid) ?: return
+        val state = raid.playerState(uuid) ?: return
+        val bundles = raid.supplyBundles ?: return
+        val bundle = bundles.getOrNull(index) ?: return
         if (!state.canClaimSupplies) {
             return
         }
@@ -229,7 +248,12 @@ constructor(
         for (item in bundle.items) {
             invAddOrDrop(objRepo, item.obj, count = item.count)
         }
-        mes("You claim the ${bundle.name.lowercase()} supplies.")
+        // Clean up the preview containers.
+        val invNames = arrayOf(INV_BUNDLE_LIFE, INV_BUNDLE_CHAOS, INV_BUNDLE_POWER)
+        for (name in invNames) {
+            invClear(inv(name))
+            invStopTransmit(inv(name))
+        }
     }
 
     /* ------------------------------------------------------------------------------------ */
@@ -301,4 +325,19 @@ constructor(
 
     private fun leaderName(raid: ToaRaid): String =
         raid.activeMembers.firstOrNull { it.uuid == raid.leaderUuid }?.name ?: "your leader"
+
+    private companion object {
+        /** Interface 777 — the Life / Chaos / Power supply selection screen. */
+        const val IF_SUPPLY_SELECT: String = "interface.toa_midraid_loot"
+
+        /** Select buttons on the supply interface (NR components 6, 9, 12). */
+        const val COM_SELECT_LIFE: String = "component.toa_midraid_loot:select_button_1"
+        const val COM_SELECT_CHAOS: String = "component.toa_midraid_loot:select_button_2"
+        const val COM_SELECT_POWER: String = "component.toa_midraid_loot:select_button_3"
+
+        /** Inv containers 807/808/809 — supply bundle previews. */
+        const val INV_BUNDLE_LIFE: String = "inv.toa_midraidloot_bundle1"
+        const val INV_BUNDLE_CHAOS: String = "inv.toa_midraidloot_bundle2"
+        const val INV_BUNDLE_POWER: String = "inv.toa_midraidloot_bundle3"
+    }
 }

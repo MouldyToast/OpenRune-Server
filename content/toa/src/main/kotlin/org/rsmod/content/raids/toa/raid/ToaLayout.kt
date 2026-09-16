@@ -46,11 +46,27 @@ internal object ToaLayout {
     fun template(): RegionStaticTemplate = TEMPLATE
 
     private fun RegionStaticTemplate.place(room: ToaRoom) {
-        copyAllLevels(room.copyZoneX, room.copyZoneZ) {
-            zoneWidth = ToaRoom.ROOM_ZONE_SPAN
-            zoneLength = ToaRoom.ROOM_ZONE_SPAN
-            regionZoneX = room.regionZoneX
-            regionZoneZ = room.regionZoneZ
+        if (room == ToaRoom.WARDENS_SECOND_ROOM) {
+            // NR SecondWardenEncounter.constructRegion() overrides the default all-plane
+            // copy with copyPlanesMap(..., 0, 1) — planes 0-1 only. Plane 2 contains the
+            // toa_tomb04_tile floor objects that the encounter code spawns dynamically
+            // during the P3 floor-rip mechanic; copying them in makes them float above
+            // the arena before the fight starts.
+            for (level in 0..1) {
+                copy(room.copyZoneX, room.copyZoneZ, level) {
+                    zoneWidth = ToaRoom.ROOM_ZONE_SPAN
+                    zoneLength = ToaRoom.ROOM_ZONE_SPAN
+                    regionZoneX = room.regionZoneX
+                    regionZoneZ = room.regionZoneZ
+                }
+            }
+        } else {
+            copyAllLevels(room.copyZoneX, room.copyZoneZ) {
+                zoneWidth = ToaRoom.ROOM_ZONE_SPAN
+                zoneLength = ToaRoom.ROOM_ZONE_SPAN
+                regionZoneX = room.regionZoneX
+                regionZoneZ = room.regionZoneZ
+            }
         }
     }
 
